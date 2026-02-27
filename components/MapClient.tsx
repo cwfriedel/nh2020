@@ -242,12 +242,21 @@ export default function MapClient() {
       })
 
       setMapReady(true)
+      requestAnimationFrame(() => {
+        map.invalidateSize()
+      })
+
+      const onResize = () => map.invalidateSize()
+      window.addEventListener('resize', onResize)
+      ;(map as any)._onResizeHandler = onResize
     }
 
     initMap()
 
     return () => {
       if (leafletMapRef.current) {
+        const onResize = (leafletMapRef.current as any)._onResizeHandler
+        if (onResize) window.removeEventListener('resize', onResize)
         leafletMapRef.current.remove()
         leafletMapRef.current = null
       }
@@ -273,7 +282,7 @@ export default function MapClient() {
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-0 h-full">
+    <div className="flex w-full flex-1 min-h-0 flex-col lg:flex-row gap-0 h-full">
       {/* Sidebar */}
       <div className="lg:w-72 bg-white border-r border-gray-200 overflow-y-auto flex-shrink-0">
         <div className="p-4 border-b border-gray-100 bg-forest text-white">
@@ -348,7 +357,7 @@ export default function MapClient() {
       </div>
 
       {/* Map container */}
-      <div className="relative flex-1" style={{ minHeight: '500px' }}>
+      <div className="relative flex-1 min-w-0" style={{ minHeight: '500px' }}>
         <div ref={mapRef} className="absolute inset-0" />
         {!mapReady && (
           <div className="absolute inset-0 flex items-center justify-center bg-cream z-10">
