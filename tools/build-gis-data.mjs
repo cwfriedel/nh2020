@@ -4,19 +4,16 @@ import path from 'node:path'
 const ROOT = process.cwd()
 const RAW_DIR = path.join(ROOT, 'data', 'gis_raw', 'shape')
 const OUT_DIR = path.join(ROOT, 'public', 'gis')
+const LAYERS_DIR = path.join(OUT_DIR, 'layers')
+const METADATA_PAGE = path.join(ROOT, 'app', 'metadata', 'page.tsx')
 
-const CALIBRATION_FILE = 'geonamea'
-const LAYERS = [
-  { source: 'nevcob', out: 'county.geojson' },
-  { source: 'hydrarca', out: 'hydrology.geojson' },
-  { source: 'geonamea', out: 'places.geojson' },
-  { source: 'lake_e89', out: 'lakes.geojson' },
-  { source: 'springs', out: 'springs.geojson' },
-  { source: 'few', out: 'wetlands.geojson' },
-  { source: 'serp', out: 'serpentine.geojson' },
-  { source: 'gabbro', out: 'gabbro.geojson' },
-  { source: 'zones', out: 'zones.geojson' },
-]
+const CALIBRATION_SOURCE = 'geonamea'
+const MAX_SHP_BYTES = 20 * 1024 * 1024
+
+const SOURCE_ALIASES = {
+  hydrpoa: 'hydropoa',
+  streams24k: 'nevstr24',
+}
 
 function readDbf(filePath) {
   const b = fs.readFileSync(filePath)
@@ -59,7 +56,6 @@ function readDbf(filePath) {
 
 function readShp(filePath) {
   const b = fs.readFileSync(filePath)
-  const shapeType = b.readInt32LE(32)
   const features = []
   let offset = 100
 
@@ -126,7 +122,7 @@ function readShp(filePath) {
     offset = recordEnd
   }
 
-  return { shapeType, features }
+  return features
 }
 
 function solve3x3(a, b) {
@@ -149,9 +145,7 @@ function solve3x3(a, b) {
     for (let r = 0; r < 3; r += 1) {
       if (r === i) continue
       const factor = m[r][i]
-      for (let c = i; c < 4; c += 1) {
-        m[r][c] -= factor * m[i][c]
-      }
+      for (let c = i; c < 4; c += 1) m[r][c] -= factor * m[i][c]
     }
   }
 
@@ -185,17 +179,12 @@ function fitAffine(sourcePoints, targetPoints) {
 
   const [ax, bx2, cx] = solve3x3(a, bx)
   const [ay, by2, cy] = solve3x3(a, by)
-
   return ([x, y]) => [ax * x + bx2 * y + cx, ay * x + by2 * y + cy]
 }
 
 function transformGeometry(geom, project) {
-  if (geom.type === 'Point') {
-    return { ...geom, coordinates: project(geom.coordinates) }
-  }
-  if (geom.type === 'LineString') {
-    return { ...geom, coordinates: geom.coordinates.map(project) }
-  }
+  if (geom.type === 'Point') return { ...geom, coordinates: project(geom.coordinates) }
+  if (geom.type === 'LineString') return { ...geom, coordinates: geom.coordinates.map(project) }
   if (geom.type === 'MultiLineString') {
     return { ...geom, coordinates: geom.coordinates.map((line) => line.map(project)) }
   }
@@ -211,27 +200,67 @@ function transformGeometry(geom, project) {
   throw new Error(`Unsupported geometry type ${geom.type}`)
 }
 
-function writeGeoJson(fileName, featureCollection) {
-  fs.mkdirSync(OUT_DIR, { recursive: true })
-  fs.writeFileSync(path.join(OUT_DIR, fileName), JSON.stringify(featureCollection))
+function parseMetadataDatasets() {
+  const source = fs.readFileSync(METADATA_PAGE, 'utf8')
+  const blockMatch = source.match(/const datasets = \[(.*?)\]\n\nconst categoryColors/s)
+  if (!blockMatch) throw new Error('Could not parse datasets block from metadata page')
+
+  const datasets = []
+  const re = /\{ key: '([^']+)', title: '([^']+)', category: '([^']+)' \}/g
+  let m = re.exec(blockMatch[1])
+  while (m) {
+    datasets.push({ key: m[1], title: m[2], category: m[3] })
+    m = re.exec(blockMatch[1])
+  }
+  return datasets
+}
+
+function scanShapefileTriples() {
+  const triples = new Set()
+  const parts = new Map()
+
+  for (const name of fs.readdirSync(RAW_DIR)) {
+    const full = path.join(RAW_DIR, name)
+    if (!fs.statSync(full).isFile()) continue
+    const ext = path.extname(name).toLowerCase()
+    if (!['.shp', '.shx', '.dbf'].includes(ext)) continue
+    const stem = path.basename(name, ext).toLowerCase()
+    if (!parts.has(stem)) parts.set(stem, new Set())
+    parts.get(stem).add(ext.slice(1))
+  }
+
+  for (const [stem, set] of parts.entries()) {
+    if (set.has('shp') && set.has('shx') && set.has('dbf')) triples.add(stem)
+  }
+
+  return triples
+}
+
+function writeJson(filePath, payload) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(payload))
 }
 
 function build() {
-  const placesDbf = readDbf(path.join(RAW_DIR, `${CALIBRATION_FILE}.dbf`))
-  const placesShp = readShp(path.join(RAW_DIR, `${CALIBRATION_FILE}.shp`))
+  fs.rmSync(LAYERS_DIR, { recursive: true, force: true })
+  const datasets = parseMetadataDatasets()
+  const triples = scanShapefileTriples()
 
-  const calibration = []
-  for (let i = 0; i < Math.min(placesDbf.length, placesShp.features.length); i += 1) {
-    const row = placesDbf[i]
-    const shpPt = placesShp.features[i]?.coordinates
-    if (!shpPt) continue
-    if (!Number.isFinite(row.LONDD) || !Number.isFinite(row.LATDD)) continue
-    calibration.push({
-      source: shpPt,
-      target: [row.LONDD, row.LATDD],
-    })
+  if (!triples.has(CALIBRATION_SOURCE)) {
+    throw new Error(`Missing calibration source '${CALIBRATION_SOURCE}' in ${RAW_DIR}`)
   }
 
+  const calibDbf = readDbf(path.join(RAW_DIR, `${CALIBRATION_SOURCE}.dbf`))
+  const calibShp = readShp(path.join(RAW_DIR, `${CALIBRATION_SOURCE}.shp`))
+
+  const calibration = []
+  for (let i = 0; i < Math.min(calibDbf.length, calibShp.length); i += 1) {
+    const row = calibDbf[i]
+    const shpPt = calibShp[i]?.coordinates
+    if (!shpPt) continue
+    if (!Number.isFinite(row.LONDD) || !Number.isFinite(row.LATDD)) continue
+    calibration.push({ source: shpPt, target: [row.LONDD, row.LATDD] })
+  }
   if (calibration.length < 10) {
     throw new Error('Not enough calibration points to compute coordinate transform')
   }
@@ -241,11 +270,22 @@ function build() {
     calibration.map((c) => c.target),
   )
 
-  for (const layer of LAYERS) {
-    const dbf = readDbf(path.join(RAW_DIR, `${layer.source}.dbf`))
-    const shp = readShp(path.join(RAW_DIR, `${layer.source}.shp`))
-    const features = shp.features.map((geom, i) => {
-      if (layer.source === CALIBRATION_FILE) {
+  const convertedSources = new Set()
+
+  function convertSource(source) {
+    if (convertedSources.has(source)) return
+
+    const shpPath = path.join(RAW_DIR, `${source}.shp`)
+    const shpSize = fs.statSync(shpPath).size
+    if (shpSize > MAX_SHP_BYTES) {
+      throw new Error(`SOURCE_TOO_LARGE:${source}:${shpSize}`)
+    }
+
+    const dbf = readDbf(path.join(RAW_DIR, `${source}.dbf`))
+    const shp = readShp(shpPath)
+
+    const features = shp.map((geom, i) => {
+      if (source === CALIBRATION_SOURCE) {
         return {
           type: 'Feature',
           properties: dbf[i] ?? {},
@@ -266,7 +306,78 @@ function build() {
       }
     })
 
-    writeGeoJson(layer.out, { type: 'FeatureCollection', features })
+    writeJson(path.join(LAYERS_DIR, `${source}.geojson`), {
+      type: 'FeatureCollection',
+      features,
+    })
+
+    convertedSources.add(source)
+  }
+
+  const catalog = datasets.map((dataset) => {
+    const source = (SOURCE_ALIASES[dataset.key] ?? dataset.key).toLowerCase()
+
+    if (!triples.has(source)) {
+      return {
+        ...dataset,
+        source,
+        available: false,
+        reason: 'missing_source',
+      }
+    }
+
+    try {
+      convertSource(source)
+      return {
+        ...dataset,
+        source,
+        file: `/gis/layers/${source}.geojson`,
+        available: true,
+      }
+    } catch (err) {
+      const msg = String(err?.message ?? err)
+      if (msg.startsWith('SOURCE_TOO_LARGE:')) {
+        return {
+          ...dataset,
+          source,
+          available: false,
+          reason: 'too_large',
+        }
+      }
+      throw err
+    }
+  })
+
+  writeJson(path.join(OUT_DIR, 'catalog.json'), catalog)
+
+  // Core compatibility outputs used by the map shell.
+  const coreCopy = {
+    county: 'nevcob',
+    hydrology: 'hydrarca',
+    places: 'geonamea',
+    lakes: 'lake_e89',
+    springs: 'springs',
+    wetlands: 'few',
+    serpentine: 'serp',
+    gabbro: 'gabbro',
+    zones: 'zones',
+  }
+  for (const [name, source] of Object.entries(coreCopy)) {
+    if (!convertedSources.has(source)) {
+      if (triples.has(source)) {
+        try {
+          convertSource(source)
+        } catch {
+          continue
+        }
+      } else {
+        continue
+      }
+    }
+    fs.copyFileSync(
+      path.join(LAYERS_DIR, `${source}.geojson`),
+      path.join(OUT_DIR, `${name}.geojson`),
+    )
   }
 }
 

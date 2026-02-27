@@ -106,12 +106,6 @@ const LAYER_DEFS = [
   { id: 'county', label: 'County Boundary', default: true },
   { id: 'rivers', label: 'Major Rivers', default: true },
   { id: 'places', label: 'Key Locations', default: true },
-  { id: 'lakes', label: 'Lakes & Reservoirs', default: true },
-  { id: 'springs', label: 'Springs', default: true },
-  { id: 'wetlands', label: 'Fresh Emergent Wetlands', default: true },
-  { id: 'serpentine', label: 'Serpentine Soils', default: true },
-  { id: 'gabbro', label: 'Gabbro Soils', default: true },
-  { id: 'zones', label: 'Elevation Zones (GIS)', default: true },
   { id: 'elevation', label: 'Elevation Zone Legend', default: true },
 ]
 
@@ -121,19 +115,39 @@ async function loadGeoJson(path: string) {
   return res.json()
 }
 
+type CatalogLayer = {
+  key: string
+  title: string
+  category: string
+  source: string
+  file?: string
+  available: boolean
+  reason?: string
+}
+
+const CATEGORY_STYLE: Record<string, { color: string; fillColor: string }> = {
+  Water: { color: '#2563eb', fillColor: '#93c5fd' },
+  Vegetation: { color: '#16a34a', fillColor: '#86efac' },
+  Wildlife: { color: '#d97706', fillColor: '#fcd34d' },
+  Geology: { color: '#a16207', fillColor: '#facc15' },
+  'Land Use': { color: '#6b7280', fillColor: '#cbd5e1' },
+  Infrastructure: { color: '#374151', fillColor: '#9ca3af' },
+  Species: { color: '#0f766e', fillColor: '#5eead4' },
+  Reference: { color: '#4f46e5', fillColor: '#c4b5fd' },
+  Other: { color: '#9f1239', fillColor: '#fda4af' },
+}
+
 export default function MapClient() {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<any>(null)
+  const leafletLibRef = useRef<any>(null)
+  const dynamicLayersRef = useRef<Record<string, any>>({})
+  const catalogIndexRef = useRef<Record<string, CatalogLayer>>({})
+  const [catalogLayers, setCatalogLayers] = useState<CatalogLayer[]>([])
   const [layers, setLayers] = useState<Record<string, boolean>>({
     county: true,
     rivers: true,
     places: true,
-    lakes: true,
-    springs: true,
-    wetlands: true,
-    serpentine: true,
-    gabbro: true,
-    zones: true,
     elevation: true,
   })
   const [mapReady, setMapReady] = useState(false)
@@ -143,6 +157,7 @@ export default function MapClient() {
 
     const initMap = async () => {
       const L = (await import('leaflet')).default
+      leafletLibRef.current = L
       // CSS is loaded via global stylesheet
 
       // Center on Nevada County
@@ -160,30 +175,19 @@ export default function MapClient() {
         maxZoom: 18,
       }).addTo(map)
 
-      const gisPaths = {
-        county: '/gis/county.geojson',
-        hydrology: '/gis/hydrology.geojson',
-        lakes: '/gis/lakes.geojson',
-        springs: '/gis/springs.geojson',
-        wetlands: '/gis/wetlands.geojson',
-        serpentine: '/gis/serpentine.geojson',
-        gabbro: '/gis/gabbro.geojson',
-        zones: '/gis/zones.geojson',
+      let countyData: any = null
+      let hydrologyData: any = null
+      try {
+        const [countyJson, hydrologyJson] = await Promise.all([
+          loadGeoJson('/gis/county.geojson'),
+          loadGeoJson('/gis/hydrology.geojson'),
+        ])
+        countyData = countyJson
+        hydrologyData = hydrologyJson
+      } catch {
+        countyData = NEVADA_COUNTY_APPROX
       }
-      const loadedEntries = await Promise.all(
-        Object.entries(gisPaths).map(async ([key, p]) => {
-          try {
-            return [key, await loadGeoJson(p)] as const
-          } catch {
-            return [key, null] as const
-          }
-        }),
-      )
-      const gisData = Object.fromEntries(loadedEntries)
-
-      let countyData: any = gisData.county ?? NEVADA_COUNTY_APPROX
-      let hydrologyData: any = gisData.hydrology ?? null
-      if (!gisData.county || !gisData.hydrology) {
+      if (!countyData || !hydrologyData) {
         // Fallback to bundled approximation if primary GIS files are unavailable.
         console.warn('Some GIS data unavailable; using fallback map geometry for missing layers.')
       }
@@ -232,61 +236,6 @@ export default function MapClient() {
         })
       }
 
-      const addOverlayLayer = (data: any, customId: string, style: any, popupLabel: string) => {
-        if (!data?.features?.length) return
-        const layerGroup = L.geoJSON(data as any, {
-          style,
-          pointToLayer: (_feature, latlng) => {
-            return L.circleMarker(latlng, {
-              radius: 3,
-              color: style?.color ?? '#2b6cb0',
-              weight: 1,
-              fillColor: style?.fillColor ?? style?.color ?? '#2b6cb0',
-              fillOpacity: 0.8,
-            })
-          },
-          onEachFeature: (_feature, layer) => {
-            ;(layer as any)._customId = customId
-            layer.bindPopup(`<strong>${popupLabel}</strong>`)
-          },
-        }).addTo(map)
-        ;(layerGroup as any).eachLayer((layer: any) => {
-          layer._customId = customId
-        })
-      }
-
-      addOverlayLayer(
-        gisData.lakes,
-        'lakes',
-        { color: '#3b82f6', fillColor: '#60a5fa', weight: 1, fillOpacity: 0.35 },
-        'Lake / Reservoir',
-      )
-      addOverlayLayer(gisData.springs, 'springs', { color: '#2563eb', fillColor: '#93c5fd', weight: 1 }, 'Spring')
-      addOverlayLayer(
-        gisData.wetlands,
-        'wetlands',
-        { color: '#0d9488', fillColor: '#5eead4', weight: 0.8, fillOpacity: 0.28 },
-        'Fresh Emergent Wetland',
-      )
-      addOverlayLayer(
-        gisData.serpentine,
-        'serpentine',
-        { color: '#16a34a', fillColor: '#86efac', weight: 0.9, fillOpacity: 0.24 },
-        'Serpentine Soils',
-      )
-      addOverlayLayer(
-        gisData.gabbro,
-        'gabbro',
-        { color: '#ea580c', fillColor: '#fdba74', weight: 0.9, fillOpacity: 0.24 },
-        'Gabbro Soils',
-      )
-      addOverlayLayer(
-        gisData.zones,
-        'zones',
-        { color: '#4b5563', fillColor: '#9ca3af', weight: 0.8, fillOpacity: 0.12 },
-        'Elevation Zone',
-      )
-
       // Place markers
       const icons: Record<string, string> = {
         city: '🏘',
@@ -322,6 +271,21 @@ export default function MapClient() {
         L.marker([w.lat, w.lon], { icon, interactive: false }).addTo(map)
       })
 
+      try {
+        const catalog = (await loadGeoJson('/gis/catalog.json')) as CatalogLayer[]
+        setCatalogLayers(catalog)
+        catalogIndexRef.current = Object.fromEntries(catalog.map((layer) => [layer.key, layer]))
+        setLayers((prev) => {
+          const next = { ...prev }
+          catalog.forEach((layer) => {
+            if (layer.available && next[layer.key] === undefined) next[layer.key] = false
+          })
+          return next
+        })
+      } catch (error) {
+        console.warn('Failed to load GIS catalog.', error)
+      }
+
       setMapReady(true)
       requestAnimationFrame(() => {
         map.invalidateSize()
@@ -340,16 +304,69 @@ export default function MapClient() {
         if (onResize) window.removeEventListener('resize', onResize)
         leafletMapRef.current.remove()
         leafletMapRef.current = null
+        dynamicLayersRef.current = {}
+        catalogIndexRef.current = {}
       }
     }
   }, [])
 
   // Toggle layer visibility
-  const toggleLayer = (layerId: string) => {
+  const toggleLayer = async (layerId: string) => {
     if (!leafletMapRef.current) return
     const map = leafletMapRef.current
     const newState = !layers[layerId]
     setLayers((prev) => ({ ...prev, [layerId]: newState }))
+
+    const dynamicEntry = catalogIndexRef.current[layerId]
+    if (dynamicEntry?.available && dynamicEntry.file) {
+      const L = leafletLibRef.current
+      let group = dynamicLayersRef.current[layerId]
+
+      if (!group && newState && L) {
+        try {
+          const data = await loadGeoJson(dynamicEntry.file)
+          const style = CATEGORY_STYLE[dynamicEntry.category] ?? {
+            color: '#475569',
+            fillColor: '#cbd5e1',
+          }
+          group = L.geoJSON(data as any, {
+            style: {
+              color: style.color,
+              fillColor: style.fillColor,
+              weight: 1,
+              opacity: 0.8,
+              fillOpacity: 0.24,
+            },
+            pointToLayer: (_feature: any, latlng: any) =>
+              L.circleMarker(latlng, {
+                radius: 3,
+                color: style.color,
+                weight: 1,
+                fillColor: style.fillColor,
+                fillOpacity: 0.8,
+              }),
+            onEachFeature: (_feature: any, layer: any) => {
+              layer._customId = layerId
+              layer.bindPopup(`<strong>${dynamicEntry.title}</strong><br/>${dynamicEntry.category}`)
+            },
+          })
+          dynamicLayersRef.current[layerId] = group
+        } catch (error) {
+          console.warn(`Failed to load layer ${layerId}`, error)
+          setLayers((prev) => ({ ...prev, [layerId]: false }))
+          return
+        }
+      }
+
+      if (group) {
+        if (newState) {
+          map.addLayer(group)
+        } else {
+          map.removeLayer(group)
+        }
+      }
+      return
+    }
 
     map.eachLayer((layer: any) => {
       if (layer._customId === layerId) {
@@ -377,7 +394,9 @@ export default function MapClient() {
               <input
                 type="checkbox"
                 checked={layers[layer.id] ?? layer.default}
-                onChange={() => toggleLayer(layer.id)}
+                onChange={() => {
+                  void toggleLayer(layer.id)
+                }}
                 className="rounded border-gray-300 text-forest"
               />
               <span className="text-sm text-gray-700 group-hover:text-forest transition-colors">
@@ -385,6 +404,37 @@ export default function MapClient() {
               </span>
             </label>
           ))}
+        </div>
+
+        <div className="p-4 border-t border-gray-100">
+          <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wide mb-3">
+            Metadata Layers
+          </h3>
+          <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+            {catalogLayers.map((layer) => (
+              <label
+                key={layer.key}
+                className={`flex items-start gap-2 ${layer.available ? 'cursor-pointer group' : 'opacity-45 cursor-not-allowed'}`}
+              >
+                <input
+                  type="checkbox"
+                  disabled={!layer.available}
+                  checked={layers[layer.key] ?? false}
+                  onChange={() => {
+                    void toggleLayer(layer.key)
+                  }}
+                  className="rounded border-gray-300 text-forest mt-0.5"
+                />
+                <span className="text-xs leading-tight">
+                  <span className="text-gray-700 block">{layer.title}</span>
+                  <span className="text-gray-500">{layer.key}</span>
+                  {!layer.available && (
+                    <span className="text-rose-700"> · unavailable ({layer.reason})</span>
+                  )}
+                </span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* Elevation zone legend */}
