@@ -106,6 +106,12 @@ const LAYER_DEFS = [
   { id: 'county', label: 'County Boundary', default: true },
   { id: 'rivers', label: 'Major Rivers', default: true },
   { id: 'places', label: 'Key Locations', default: true },
+  { id: 'lakes', label: 'Lakes & Reservoirs', default: true },
+  { id: 'springs', label: 'Springs', default: true },
+  { id: 'wetlands', label: 'Fresh Emergent Wetlands', default: true },
+  { id: 'serpentine', label: 'Serpentine Soils', default: true },
+  { id: 'gabbro', label: 'Gabbro Soils', default: true },
+  { id: 'zones', label: 'Elevation Zones (GIS)', default: true },
   { id: 'elevation', label: 'Elevation Zone Legend', default: true },
 ]
 
@@ -122,6 +128,12 @@ export default function MapClient() {
     county: true,
     rivers: true,
     places: true,
+    lakes: true,
+    springs: true,
+    wetlands: true,
+    serpentine: true,
+    gabbro: true,
+    zones: true,
     elevation: true,
   })
   const [mapReady, setMapReady] = useState(false)
@@ -148,18 +160,32 @@ export default function MapClient() {
         maxZoom: 18,
       }).addTo(map)
 
-      let countyData: any = NEVADA_COUNTY_APPROX
-      let hydrologyData: any = null
-      try {
-        const [countyJson, hydrologyJson] = await Promise.all([
-          loadGeoJson('/gis/county.geojson'),
-          loadGeoJson('/gis/hydrology.geojson'),
-        ])
-        countyData = countyJson
-        hydrologyData = hydrologyJson
-      } catch (e) {
-        // Fallback to bundled approximation if GIS files are unavailable.
-        console.warn('GIS data unavailable; using fallback map geometry.', e)
+      const gisPaths = {
+        county: '/gis/county.geojson',
+        hydrology: '/gis/hydrology.geojson',
+        lakes: '/gis/lakes.geojson',
+        springs: '/gis/springs.geojson',
+        wetlands: '/gis/wetlands.geojson',
+        serpentine: '/gis/serpentine.geojson',
+        gabbro: '/gis/gabbro.geojson',
+        zones: '/gis/zones.geojson',
+      }
+      const loadedEntries = await Promise.all(
+        Object.entries(gisPaths).map(async ([key, p]) => {
+          try {
+            return [key, await loadGeoJson(p)] as const
+          } catch {
+            return [key, null] as const
+          }
+        }),
+      )
+      const gisData = Object.fromEntries(loadedEntries)
+
+      let countyData: any = gisData.county ?? NEVADA_COUNTY_APPROX
+      let hydrologyData: any = gisData.hydrology ?? null
+      if (!gisData.county || !gisData.hydrology) {
+        // Fallback to bundled approximation if primary GIS files are unavailable.
+        console.warn('Some GIS data unavailable; using fallback map geometry for missing layers.')
       }
 
       // County boundary layer
@@ -205,6 +231,61 @@ export default function MapClient() {
           ;(line as any)._customId = 'rivers'
         })
       }
+
+      const addOverlayLayer = (data: any, customId: string, style: any, popupLabel: string) => {
+        if (!data?.features?.length) return
+        const layerGroup = L.geoJSON(data as any, {
+          style,
+          pointToLayer: (_feature, latlng) => {
+            return L.circleMarker(latlng, {
+              radius: 3,
+              color: style?.color ?? '#2b6cb0',
+              weight: 1,
+              fillColor: style?.fillColor ?? style?.color ?? '#2b6cb0',
+              fillOpacity: 0.8,
+            })
+          },
+          onEachFeature: (_feature, layer) => {
+            ;(layer as any)._customId = customId
+            layer.bindPopup(`<strong>${popupLabel}</strong>`)
+          },
+        }).addTo(map)
+        ;(layerGroup as any).eachLayer((layer: any) => {
+          layer._customId = customId
+        })
+      }
+
+      addOverlayLayer(
+        gisData.lakes,
+        'lakes',
+        { color: '#3b82f6', fillColor: '#60a5fa', weight: 1, fillOpacity: 0.35 },
+        'Lake / Reservoir',
+      )
+      addOverlayLayer(gisData.springs, 'springs', { color: '#2563eb', fillColor: '#93c5fd', weight: 1 }, 'Spring')
+      addOverlayLayer(
+        gisData.wetlands,
+        'wetlands',
+        { color: '#0d9488', fillColor: '#5eead4', weight: 0.8, fillOpacity: 0.28 },
+        'Fresh Emergent Wetland',
+      )
+      addOverlayLayer(
+        gisData.serpentine,
+        'serpentine',
+        { color: '#16a34a', fillColor: '#86efac', weight: 0.9, fillOpacity: 0.24 },
+        'Serpentine Soils',
+      )
+      addOverlayLayer(
+        gisData.gabbro,
+        'gabbro',
+        { color: '#ea580c', fillColor: '#fdba74', weight: 0.9, fillOpacity: 0.24 },
+        'Gabbro Soils',
+      )
+      addOverlayLayer(
+        gisData.zones,
+        'zones',
+        { color: '#4b5563', fillColor: '#9ca3af', weight: 0.8, fillOpacity: 0.12 },
+        'Elevation Zone',
+      )
 
       // Place markers
       const icons: Record<string, string> = {

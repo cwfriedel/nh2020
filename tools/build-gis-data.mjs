@@ -5,11 +5,18 @@ const ROOT = process.cwd()
 const RAW_DIR = path.join(ROOT, 'data', 'gis_raw', 'shape')
 const OUT_DIR = path.join(ROOT, 'public', 'gis')
 
-const FILES = {
-  county: 'nevcob',
-  rivers: 'hydrarca',
-  places: 'geonamea',
-}
+const CALIBRATION_FILE = 'geonamea'
+const LAYERS = [
+  { source: 'nevcob', out: 'county.geojson' },
+  { source: 'hydrarca', out: 'hydrology.geojson' },
+  { source: 'geonamea', out: 'places.geojson' },
+  { source: 'lake_e89', out: 'lakes.geojson' },
+  { source: 'springs', out: 'springs.geojson' },
+  { source: 'few', out: 'wetlands.geojson' },
+  { source: 'serp', out: 'serpentine.geojson' },
+  { source: 'gabbro', out: 'gabbro.geojson' },
+  { source: 'zones', out: 'zones.geojson' },
+]
 
 function readDbf(filePath) {
   const b = fs.readFileSync(filePath)
@@ -210,8 +217,8 @@ function writeGeoJson(fileName, featureCollection) {
 }
 
 function build() {
-  const placesDbf = readDbf(path.join(RAW_DIR, `${FILES.places}.dbf`))
-  const placesShp = readShp(path.join(RAW_DIR, `${FILES.places}.shp`))
+  const placesDbf = readDbf(path.join(RAW_DIR, `${CALIBRATION_FILE}.dbf`))
+  const placesShp = readShp(path.join(RAW_DIR, `${CALIBRATION_FILE}.shp`))
 
   const calibration = []
   for (let i = 0; i < Math.min(placesDbf.length, placesShp.features.length); i += 1) {
@@ -234,34 +241,33 @@ function build() {
     calibration.map((c) => c.target),
   )
 
-  const countyDbf = readDbf(path.join(RAW_DIR, `${FILES.county}.dbf`))
-  const countyShp = readShp(path.join(RAW_DIR, `${FILES.county}.shp`))
-  const countyFeatures = countyShp.features.map((geom, i) => ({
-    type: 'Feature',
-    properties: countyDbf[i] ?? {},
-    geometry: transformGeometry(geom, project),
-  }))
+  for (const layer of LAYERS) {
+    const dbf = readDbf(path.join(RAW_DIR, `${layer.source}.dbf`))
+    const shp = readShp(path.join(RAW_DIR, `${layer.source}.shp`))
+    const features = shp.features.map((geom, i) => {
+      if (layer.source === CALIBRATION_FILE) {
+        return {
+          type: 'Feature',
+          properties: dbf[i] ?? {},
+          geometry: {
+            type: 'Point',
+            coordinates: [
+              dbf[i]?.LONDD ?? project(geom.coordinates)[0],
+              dbf[i]?.LATDD ?? project(geom.coordinates)[1],
+            ],
+          },
+        }
+      }
 
-  const riverDbf = readDbf(path.join(RAW_DIR, `${FILES.rivers}.dbf`))
-  const riverShp = readShp(path.join(RAW_DIR, `${FILES.rivers}.shp`))
-  const riverFeatures = riverShp.features.map((geom, i) => ({
-    type: 'Feature',
-    properties: riverDbf[i] ?? {},
-    geometry: transformGeometry(geom, project),
-  }))
+      return {
+        type: 'Feature',
+        properties: dbf[i] ?? {},
+        geometry: transformGeometry(geom, project),
+      }
+    })
 
-  const placeFeatures = placesShp.features.map((geom, i) => ({
-    type: 'Feature',
-    properties: placesDbf[i] ?? {},
-    geometry: {
-      type: 'Point',
-      coordinates: [placesDbf[i]?.LONDD ?? project(geom.coordinates)[0], placesDbf[i]?.LATDD ?? project(geom.coordinates)[1]],
-    },
-  }))
-
-  writeGeoJson('county.geojson', { type: 'FeatureCollection', features: countyFeatures })
-  writeGeoJson('hydrology.geojson', { type: 'FeatureCollection', features: riverFeatures })
-  writeGeoJson('places.geojson', { type: 'FeatureCollection', features: placeFeatures })
+    writeGeoJson(layer.out, { type: 'FeatureCollection', features })
+  }
 }
 
 build()
