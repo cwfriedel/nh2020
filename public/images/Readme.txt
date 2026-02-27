@@ -1,0 +1,1 @@
+This directory contains Natural Resources Report maps, figures and tables.
