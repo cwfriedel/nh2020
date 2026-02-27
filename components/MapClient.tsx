@@ -109,6 +109,12 @@ const LAYER_DEFS = [
   { id: 'elevation', label: 'Elevation Zone Legend', default: true },
 ]
 
+async function loadGeoJson(path: string) {
+  const res = await fetch(path)
+  if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`)
+  return res.json()
+}
+
 export default function MapClient() {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletMapRef = useRef<any>(null)
@@ -142,8 +148,22 @@ export default function MapClient() {
         maxZoom: 18,
       }).addTo(map)
 
+      let countyData: any = NEVADA_COUNTY_APPROX
+      let hydrologyData: any = null
+      try {
+        const [countyJson, hydrologyJson] = await Promise.all([
+          loadGeoJson('/gis/county.geojson'),
+          loadGeoJson('/gis/hydrology.geojson'),
+        ])
+        countyData = countyJson
+        hydrologyData = hydrologyJson
+      } catch (e) {
+        // Fallback to bundled approximation if GIS files are unavailable.
+        console.warn('GIS data unavailable; using fallback map geometry.', e)
+      }
+
       // County boundary layer
-      const countyLayer = L.geoJSON(NEVADA_COUNTY_APPROX as any, {
+      const countyLayer = L.geoJSON(countyData as any, {
         style: {
           color: '#4a5e2a',
           weight: 3,
@@ -156,16 +176,35 @@ export default function MapClient() {
       countyLayer.bindPopup('<strong>Nevada County, CA</strong><br/>Area: ~974 sq mi<br/>3 major watersheds: Yuba, Bear, Truckee')
       ;(countyLayer as any)._customId = 'county'
 
-      // River layers
-      RIVERS.forEach((r) => {
-        const line = L.polyline(r.coords.map((c) => [c[1], c[0]] as [number, number]), {
-          color: r.color,
-          weight: 2.5,
-          opacity: 0.8,
+      if (hydrologyData?.features?.length) {
+        const riversLayer = L.geoJSON(hydrologyData as any, {
+          style: {
+            color: '#4a7fa5',
+            weight: 1.2,
+            opacity: 0.55,
+          },
+          onEachFeature: (feature, layer) => {
+            ;(layer as any)._customId = 'rivers'
+            const major = (feature as any)?.properties?.MAJOR1
+            const minor = (feature as any)?.properties?.MINOR1
+            layer.bindPopup(`<strong>Hydrology Segment</strong><br/>Class: ${major ?? 'n/a'}-${minor ?? 'n/a'}`)
+          },
         }).addTo(map)
-        line.bindPopup(`<strong>${r.name}</strong>`)
-        ;(line as any)._customId = 'rivers'
-      })
+        ;(riversLayer as any).eachLayer((layer: any) => {
+          layer._customId = 'rivers'
+        })
+      } else {
+        // River layers fallback
+        RIVERS.forEach((r) => {
+          const line = L.polyline(r.coords.map((c) => [c[1], c[0]] as [number, number]), {
+            color: r.color,
+            weight: 2.5,
+            opacity: 0.8,
+          }).addTo(map)
+          line.bindPopup(`<strong>${r.name}</strong>`)
+          ;(line as any)._customId = 'rivers'
+        })
+      }
 
       // Place markers
       const icons: Record<string, string> = {
@@ -303,8 +342,8 @@ export default function MapClient() {
 
         {/* Data note */}
         <div className="p-4 border-t border-gray-100 text-xs text-gray-500 italic">
-          Base map: © OpenStreetMap contributors. County boundary is approximate. GIS data from
-          Nevada County Natural Resources Report, 2002.
+          Base map: © OpenStreetMap contributors. Boundary and hydrology layers from Nevada County
+          Natural Resources Report GIS archive (2002).
         </div>
       </div>
 
