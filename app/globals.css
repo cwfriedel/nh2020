@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet map styles */
+@import 'leaflet/dist/leaflet.css';
+
+@layer base {
+  body {
+    @apply bg-cream text-gray-800;
+  }
+}
+
+@layer components {
+  .report-content h1 { @apply text-2xl font-bold text-forest mt-8 mb-3; }
+  .report-content h2 { @apply text-xl font-semibold text-forest mt-6 mb-2; }
+  .report-content h3 { @apply text-lg font-medium text-bark mt-5 mb-2 italic; }
+  .report-content h4 { @apply text-base font-normal mt-4 mb-2; }
+  .report-content p { @apply mb-4 leading-relaxed text-gray-700; }
+  .report-content a { @apply text-water hover:text-forest underline font-medium; }
+  .report-content table { @apply w-full border-collapse mb-6; }
+  .report-content td, .report-content th { @apply border border-gray-300 px-3 py-2 text-sm; }
+  .report-content th { @apply bg-sage/20 font-semibold; }
+  .report-content img { @apply max-w-full h-auto rounded shadow-sm my-4; }
+  .report-content blockquote { @apply border-l-4 border-sage pl-4 italic my-4; }
+  .report-content font { @apply text-inherit; }
+}
+
+/* Print styles */
+@media print {
+  nav, aside { display: none; }
+  main { max-width: 100% !important; }
+}
