@@ -45,7 +45,7 @@ export default function ReportPage({ title, html, breadcrumb, next, prev }: Repo
         {/* Report content */}
         <article
           className="report-content prose prose-sm max-w-none"
-          dangerouslySetInnerHTML={{ __html: html }}
+          dangerouslySetInnerHTML={{ __html: html.replace(/<img(?![^>]*\bloading=)/gi, '<img loading="lazy" decoding="async"') }}
         />
 
         {/* Prev/Next navigation */}

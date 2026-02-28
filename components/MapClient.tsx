@@ -1,4 +1,5 @@
 'use client'
+import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef, useState } from 'react'
 
 // Nevada County approximate boundary polygon (WGS84)
@@ -109,8 +110,8 @@ const LAYER_DEFS = [
   { id: 'elevation', label: 'Elevation Zone Legend', default: true },
 ]
 
-async function loadGeoJson(path: string) {
-  const res = await fetch(path)
+async function loadGeoJson(path: string, signal?: AbortSignal) {
+  const res = await fetch(path, signal ? { signal } : {})
   if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`)
   return res.json()
 }
@@ -155,10 +156,14 @@ export default function MapClient() {
   useEffect(() => {
     if (!mapRef.current || leafletMapRef.current) return
 
+    const abortController = new AbortController()
+    const { signal } = abortController
+    let mounted = true
+
     const initMap = async () => {
       const L = (await import('leaflet')).default
+      if (!mounted) return
       leafletLibRef.current = L
-      // CSS is loaded via global stylesheet
 
       // Center on Nevada County
       const map = L.map(mapRef.current!, {
@@ -179,14 +184,16 @@ export default function MapClient() {
       let hydrologyData: any = null
       try {
         const [countyJson, hydrologyJson] = await Promise.all([
-          loadGeoJson('/gis/county.geojson'),
-          loadGeoJson('/gis/hydrology.geojson'),
+          loadGeoJson('/gis/county.geojson', signal),
+          loadGeoJson('/gis/hydrology.geojson', signal),
         ])
         countyData = countyJson
         hydrologyData = hydrologyJson
-      } catch {
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return
         countyData = NEVADA_COUNTY_APPROX
       }
+      if (!mounted) return
       if (!countyData || !hydrologyData) {
         // Fallback to bundled approximation if primary GIS files are unavailable.
         console.warn('Some GIS data unavailable; using fallback map geometry for missing layers.')
@@ -272,7 +279,8 @@ export default function MapClient() {
       })
 
       try {
-        const catalog = (await loadGeoJson('/gis/catalog.json')) as CatalogLayer[]
+        const catalog = (await loadGeoJson('/gis/catalog.json', signal)) as CatalogLayer[]
+        if (!mounted) return
         setCatalogLayers(catalog)
         catalogIndexRef.current = Object.fromEntries(catalog.map((layer) => [layer.key, layer]))
         setLayers((prev) => {
@@ -282,13 +290,15 @@ export default function MapClient() {
           })
           return next
         })
-      } catch (error) {
-        console.warn('Failed to load GIS catalog.', error)
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return
+        console.warn('Failed to load GIS catalog.', err)
       }
 
+      if (!mounted) return
       setMapReady(true)
       requestAnimationFrame(() => {
-        map.invalidateSize()
+        if (mounted) map.invalidateSize()
       })
 
       const onResize = () => map.invalidateSize()
@@ -299,6 +309,8 @@ export default function MapClient() {
     initMap()
 
     return () => {
+      mounted = false
+      abortController.abort()
       if (leafletMapRef.current) {
         const onResize = (leafletMapRef.current as any)._onResizeHandler
         if (onResize) window.removeEventListener('resize', onResize)
@@ -324,7 +336,7 @@ export default function MapClient() {
 
       if (!group && newState && L) {
         try {
-          const data = await loadGeoJson(dynamicEntry.file)
+          const data = await loadGeoJson(dynamicEntry.file, undefined)
           const style = CATEGORY_STYLE[dynamicEntry.category] ?? {
             color: '#475569',
             fillColor: '#cbd5e1',

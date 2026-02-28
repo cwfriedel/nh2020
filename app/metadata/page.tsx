@@ -134,7 +134,7 @@ export default function MetadataPage() {
                 .map((dataset) => (
                   <div
                     key={dataset.key}
-                    className="bg-white rounded-lg border border-sage/20 p-4 shadow-sm hover:shadow-md transition-shadow"
+                    className="bg-white rounded-lg border border-sage/20 p-4 shadow-sm"
                   >
                     <div className="font-medium text-sm text-gray-800 mb-1">{dataset.title}</div>
                     <div className="text-xs text-gray-500 font-mono">{dataset.key}.shp</div>
