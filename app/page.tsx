@@ -182,6 +182,31 @@ export default function Home() {
             watersheds, documenting 1,814 plant taxa (≈26% of California's flora) and hundreds of
             vertebrate species across 27 large-patch ecosystems.
           </p>
+          <div className="mt-4 pt-4 border-t border-sage/20">
+            <h3 className="font-semibold text-forest text-sm mb-2">Acknowledgements</h3>
+            <p className="text-sm text-gray-700 leading-relaxed mb-2">
+              The authors extend their gratitude to the following peer reviewers who provided
+              detailed comments and fact-checking of the entire document on short notice:
+            </p>
+            <ul className="text-sm text-gray-700 leading-relaxed space-y-0.5 list-none pl-0">
+              {[
+                'Ms. Vicki Campbell, U.S. Fish and Wildlife Service, Sacramento',
+                'Dr. Frank Davis, Donald Bren School of Environmental Science, University of California Santa Barbara',
+                'Mr. Jeff Finn, Regional Wildlife Biologist, California Department of Fish and Game, Nevada County',
+                'Dr. Jim Gaither, The Nature Conservancy, California Field Office, San Francisco',
+                'Dr. John Harris, Biology Department, Mills College, Oakland',
+                'Mr. John Koltun, Geographic Resource Solutions, Anchorage, Alaska',
+                'Dr. William F. Laudenslayer, Jr., U.S. Forest Service, Fresno',
+                'Dr. Thomas Parker, Biology Department, San Francisco State University',
+                'Dr. Michael Soulé, Professor Emeritus, College of Natural Resources, University of California, Santa Cruz',
+                'Dr. Peter Stine, U.S. Forest Service, Sacramento',
+              ].map((name) => (
+                <li key={name} className="before:content-['·'] before:mr-2 before:text-sage">
+                  {name}
+                </li>
+              ))}
+            </ul>
+          </div>
           <div className="mt-4 pt-4 border-t border-sage/20 text-xs text-gray-500">
             © 2002 Nevada County Planning Department · Design © 2002 Centauria.com ·
             Digitally preserved and modernized for public access
