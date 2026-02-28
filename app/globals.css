@@ -21,7 +21,7 @@
   .report-content table { @apply w-full border-collapse mb-6; }
   .report-content td, .report-content th { @apply border border-gray-300 px-3 py-2 text-sm; }
   .report-content th { @apply bg-sage/20 font-semibold; }
-  .report-content img { @apply max-w-full h-auto rounded shadow-sm my-4; }
+  .report-content img { @apply w-full block h-auto rounded-lg shadow-md my-6; }
   .report-content blockquote { @apply border-l-4 border-sage pl-4 italic my-4; }
   .report-content font { @apply text-inherit; }
 }

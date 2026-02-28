@@ -67,7 +67,6 @@ export default function Home() {
       {/* Hero */}
       <section
         className="relative bg-forest text-white overflow-hidden"
-        style={{ minHeight: '320px' }}
       >
         <div
           className="absolute inset-0 opacity-10"
@@ -75,44 +74,44 @@ export default function Home() {
             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
           }}
         />
-        <div className="relative max-w-5xl mx-auto px-4 py-16 flex flex-col md:flex-row items-center gap-8">
-          <div className="flex-1">
-            <div className="text-sage text-sm font-semibold uppercase tracking-widest mb-3">
-              Natural Heritage 2020
-            </div>
-            <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-4">
-              Nevada County<br />
-              <span className="text-sage">Natural Resources Report</span>
-            </h1>
-            <p className="text-white/80 text-lg max-w-xl mb-6">
-              A comprehensive scientific analysis of watersheds, habitats, and plant and animal
-              species across Nevada County, California.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/summary"
-                className="bg-sage hover:bg-sage/80 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors no-underline text-sm"
-              >
-                Read Executive Summary
-              </Link>
-              <Link
-                href="/map"
-                className="bg-white/10 hover:bg-white/20 text-white font-semibold px-5 py-2.5 rounded-lg border border-white/30 transition-colors no-underline text-sm"
-              >
-                🗺 View Interactive Map
-              </Link>
-            </div>
+        <div className="relative max-w-5xl mx-auto px-4 py-16">
+          <div className="text-sage text-sm font-semibold uppercase tracking-widest mb-3">
+            Natural Heritage 2020
           </div>
-          <div className="text-right text-white/60 text-sm hidden md:block">
-            <img
-              src="/images/redfoxpup.jpg"
-              alt="Red fox pup, Nevada County"
-              className="rounded-lg shadow-lg w-48 h-auto"
-            />
-            <div className="mt-2 text-xs">Red fox pup, Nevada County</div>
+          <h1 className="text-4xl md:text-5xl font-bold leading-tight mb-4">
+            Nevada County<br />
+            <span className="text-sage">Natural Resources Report</span>
+          </h1>
+          <p className="text-white/80 text-lg max-w-xl mb-6">
+            A comprehensive scientific analysis of watersheds, habitats, and plant and animal
+            species across Nevada County, California.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href="/summary"
+              className="bg-sage hover:bg-sage/80 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors no-underline text-sm"
+            >
+              Read Executive Summary
+            </Link>
+            <Link
+              href="/map"
+              className="bg-white/10 hover:bg-white/20 text-white font-semibold px-5 py-2.5 rounded-lg border border-white/30 transition-colors no-underline text-sm"
+            >
+              🗺 View Interactive Map
+            </Link>
           </div>
         </div>
       </section>
+
+      {/* Full-width feature image */}
+      <div className="w-full overflow-hidden" style={{ maxHeight: '420px' }}>
+        <img
+          src="/images/upscaled/redfoxpup.jpg"
+          alt="Red fox pup, Nevada County"
+          className="w-full object-cover"
+          style={{ maxHeight: '420px' }}
+        />
+      </div>
 
       {/* Stats bar */}
       <div className="bg-sage/20 border-y border-sage/30">
